@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+dist-ssr/
+build/
+coverage/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+supabase.txt
+
+# Runtime files
+*.log
+logs/
+backend/uploads/
+
+# Tool caches
+.cache/
+**/.cache/
+.turbo/
+.vite/
+
+# Editor and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

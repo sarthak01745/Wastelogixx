@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  DRIVER
+}
+
+enum TruckStatus {
+  AVAILABLE
+  ON_ROUTE
+  MAINTENANCE
+  OFFLINE
+}
+
+enum TaskStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DELAYED
+}
+
+enum AnomalyType {
+  DEVIATION
+  LONG_STOP
+  GPS_SPOOF
+  MULTI_STOP
+  GEOFENCE
+  DUPLICATE_IMAGE
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ZoneKind {
+  ALLOWED
+  RESTRICTED
+}
+
+enum LogSource {
+  DRIVER_APP
+  IOT_DEVICE
+  BULK_SYNC
+}
+
+enum ReportRange {
+  WEEKLY
+  MONTHLY
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  authUserId         String?             @unique @map("auth_user_id")
+  name               String
+  email              String              @unique
+  password           String
+  role               UserRole
+  trucks             Truck[]             @relation("DriverTruck")
+  assignedTasks      Task[]              @relation("TaskDriver")
+  createdTasks       Task[]              @relation("TaskAdmin")
+  locationLogs       LocationLog[]
+  anomalies          Anomaly[]
+  stopJustifications StopJustification[]
+  driverScore        DriverScore?
+  auditLogs          AuditLog[]
+  alerts             Alert[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model Truck {
+  id           String        @id @default(cuid())
+  truckNumber  String        @unique @map("truck_number")
+  driverId     String?       @map("driver_id")
+  status       TruckStatus   @default(AVAILABLE)
+  deviceKey    String?       @unique @map("device_key")
+  model        String?
+  homeBase     String?       @map("home_base")
+  capacityKg   Int?          @map("capacity_kg")
+  currentLat   Float?        @map("current_lat")
+  currentLng   Float?        @map("current_lng")
+  lastPingAt   DateTime?     @map("last_ping_at")
+  driver       User?         @relation("DriverTruck", fields: [driverId], references: [id])
+  tasks        Task[]
+  locationLogs LocationLog[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Task {
+  id                 String              @id @default(cuid())
+  driverId           String              @map("driver_id")
+  truckId            String              @map("truck_id")
+  assignedBy         String              @map("assigned_by")
+  routeStart         String              @map("route_start")
+  routeEnd           String              @map("route_end")
+  routeStartCity     String?             @map("route_start_city")
+  routeStartArea     String?             @map("route_start_area")
+  routeEndCity       String?             @map("route_end_city")
+  routeEndArea       String?             @map("route_end_area")
+  expectedPath       Json                @map("expected_path")
+  routeCheckpoints   Json?               @map("route_checkpoints")
+  scheduledTime      DateTime            @map("scheduled_time")
+  deadline           DateTime
+  paymentAmount      Decimal             @db.Decimal(12, 2) @map("payment_amount")
+  loadType           String?             @map("load_type")
+  loadWeightKg       Int?                @map("load_weight_kg")
+  loadUnits          Int?                @map("load_units")
+  manifestCode       String?             @map("manifest_code")
+  expectedDistanceKm Float?              @map("expected_distance_km")
+  actualDistanceKm   Float?              @map("actual_distance_km")
+  status             TaskStatus          @default(ASSIGNED)
+  startedAt          DateTime?           @map("started_at")
+  completedAt        DateTime?           @map("completed_at")
+  estimatedDuration  Int?                @map("estimated_duration")
+  riskLevel          RiskLevel           @default(LOW) @map("risk_level")
+  riskScore          Int                 @default(0) @map("risk_score")
+  complianceScore    Int                 @default(100) @map("compliance_score")
+  driver             User                @relation("TaskDriver", fields: [driverId], references: [id])
+  truck              Truck               @relation(fields: [truckId], references: [id])
+  assigner           User                @relation("TaskAdmin", fields: [assignedBy], references: [id])
+  locationLogs       LocationLog[]
+  anomalies          Anomaly[]
+  stopJustifications StopJustification[]
+  invoice            Invoice?
+  alerts             Alert[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model LocationLog {
+  id                 String      @id @default(cuid())
+  tripId             String      @map("trip_id")
+  driverId           String      @map("driver_id")
+  truckId            String      @map("truck_id")
+  lat                Float
+  lng                Float
+  cityName           String?     @map("city_name")
+  areaName           String?     @map("area_name")
+  odometerKm         Float?      @map("odometer_km")
+  speedKph           Float?      @map("speed_kph")
+  heading            Float?
+  timestamp          DateTime
+  source             LogSource   @default(DRIVER_APP)
+  hash               String
+  previousHash       String?     @map("previous_hash")
+  isOfflineCapture   Boolean     @default(false) @map("is_offline_capture")
+  insideAllowedZone  Boolean?    @map("inside_allowed_zone")
+  insideRestricted   Boolean?    @map("inside_restricted")
+  task               Task        @relation(fields: [tripId], references: [id])
+  driver             User        @relation(fields: [driverId], references: [id])
+  truck              Truck       @relation(fields: [truckId], references: [id])
+  createdAt          DateTime    @default(now())
+
+  @@index([tripId, timestamp])
+}
+
+model Anomaly {
+  id         String       @id @default(cuid())
+  tripId      String      @map("trip_id")
+  driverId    String      @map("driver_id")
+  type        AnomalyType
+  severity    Severity
+  timestamp   DateTime    @default(now())
+  resolved    Boolean     @default(false)
+  message     String
+  metadata    Json?
+  task        Task        @relation(fields: [tripId], references: [id])
+  driver      User        @relation(fields: [driverId], references: [id])
+  alerts      Alert[]
+
+  @@index([tripId, timestamp])
+}
+
+model StopJustification {
+  id          String      @id @default(cuid())
+  tripId       String     @map("trip_id")
+  driverId     String     @map("driver_id")
+  reason       String
+  imageUrl     String     @map("image_url")
+  imageHash    String     @map("image_hash")
+  isDuplicate  Boolean    @default(false) @map("is_duplicate")
+  timestamp    DateTime   @default(now())
+  task         Task       @relation(fields: [tripId], references: [id])
+  driver       User       @relation(fields: [driverId], references: [id])
+}
+
+model Invoice {
+  id           String    @id @default(cuid())
+  tripId        String   @unique @map("trip_id")
+  pdfUrl        String   @map("pdf_url")
+  totalAmount   Decimal  @db.Decimal(12, 2) @map("total_amount")
+  generatedAt   DateTime @default(now()) @map("generated_at")
+  task          Task     @relation(fields: [tripId], references: [id])
+}
+
+model DriverScore {
+  id          String   @id @default(cuid())
+  driverId    String   @unique @map("driver_id")
+  score       Int
+  metrics     Json?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  driver      User     @relation(fields: [driverId], references: [id])
+}
+
+model PlaceCache {
+  id                    String           @id @default(cuid())
+  cacheKey              String           @unique @map("cache_key")
+  queryText             String?          @map("query_text")
+  displayName           String           @map("display_name")
+  formattedAddress      String           @map("formatted_address")
+  cityName              String?          @map("city_name")
+  areaName              String?          @map("area_name")
+  stateName             String?          @map("state_name")
+  countryCode           String?          @map("country_code")
+  lat                   Float
+  lng                   Float
+  source                String           @default("NOMINATIM")
+  meta                  Json?
+  usageCount            Int              @default(1) @map("usage_count")
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  originRoutePlans      RoutePlanCache[] @relation("OriginRoutePlan")
+  destinationRoutePlans RoutePlanCache[] @relation("DestinationRoutePlan")
+
+  @@index([queryText])
+}
+
+model RoutePlanCache {
+  id                 String     @id @default(cuid())
+  cacheKey           String     @unique @map("cache_key")
+  originPlaceId      String     @map("origin_place_id")
+  destinationPlaceId String     @map("destination_place_id")
+  expectedPath       Json       @map("expected_path")
+  routeCheckpoints   Json       @map("route_checkpoints")
+  expectedDistanceKm Float      @map("expected_distance_km")
+  estimatedDuration  Int        @map("estimated_duration")
+  meta               Json?
+  usageCount         Int        @default(1) @map("usage_count")
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  originPlace        PlaceCache @relation("OriginRoutePlan", fields: [originPlaceId], references: [id])
+  destinationPlace   PlaceCache @relation("DestinationRoutePlan", fields: [destinationPlaceId], references: [id])
+}
+
+model Geofence {
+  id          String    @id @default(cuid())
+  name        String
+  kind        ZoneKind
+  geometry    Json
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Alert {
+  id          String     @id @default(cuid())
+  tripId       String?   @map("trip_id")
+  driverId     String?   @map("driver_id")
+  anomalyId    String?   @map("anomaly_id")
+  title        String
+  message      String
+  severity     Severity
+  readAt       DateTime? @map("read_at")
+  createdAt    DateTime  @default(now())
+  task         Task?     @relation(fields: [tripId], references: [id])
+  driver       User?     @relation(fields: [driverId], references: [id])
+  anomaly      Anomaly?  @relation(fields: [anomalyId], references: [id])
+}
+
+model ComplianceReport {
+  id           String      @id @default(cuid())
+  type         ReportRange
+  rangeStart   DateTime    @map("range_start")
+  rangeEnd     DateTime    @map("range_end")
+  pdfUrl       String      @map("pdf_url")
+  summary      Json
+  generatedAt  DateTime    @default(now()) @map("generated_at")
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  actorId     String?   @map("actor_id")
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id")
+  action      String
+  payload     Json?
+  hash        String
+  previousHash String?  @map("previous_hash")
+  createdAt   DateTime  @default(now())
+  actor       User?     @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+}

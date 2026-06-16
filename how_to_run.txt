@@ -1,0 +1,319 @@
+ROUTESHIELD - STEP BY STEP RUN GUIDE
+
+1. Prerequisites
+- Install Node.js 18+.
+- Make sure npm works in terminal.
+
+2. Open the project folder
+- Open terminal in:
+  C:\Users\Asus\Downloads\PROJECT
+
+3. Supabase setup
+- This project is now configured to use your Supabase project.
+- Local PostgreSQL is NOT required anymore.
+- The backend already points to:
+  Supabase Auth for login and signup
+  Supabase PostgreSQL for application data
+
+4. Check backend environment
+- The backend env file is already present at:
+  backend\.env
+- Current important values:
+  PORT=4000
+  CLIENT_URL="http://localhost:8080"
+  APP_URL="http://localhost:4000"
+- Important Supabase note:
+  if Prisma cannot reach db.<project-ref>.supabase.co:5432 from your network, open the Supabase dashboard
+  click Connect
+  copy the Session pooler connection string
+  replace DATABASE_URL in backend\.env with that pooler string
+  this is usually needed on IPv4-only networks because the direct db host is IPv6-first
+
+5. Install backend dependencies
+- Open a terminal and run:
+
+  cd backend
+  npm install
+
+6. Prepare backend database
+- In the backend terminal run:
+
+  npx prisma generate
+  npx prisma db push
+  npm run prisma:seed
+
+- This will:
+  create the tables in Supabase PostgreSQL
+  apply the Prisma schema to Supabase
+  create auth users in Supabase Auth
+  insert demo users, trucks, tasks, location logs, anomalies, invoices, driver scores, and geofences
+  populate South India mock routes centered around Tiruchirappalli
+
+- Seeded corridor coverage includes:
+  Tiruchirappalli to Chennai
+  Tiruchirappalli to Bengaluru
+  Tiruchirappalli to Madurai
+  Tiruchirappalli to Puducherry
+  Tiruchirappalli to Kochi
+
+- Seeded area-level waypoints include places such as:
+  Ariyamangalam
+  Thuvakudi
+  Srirangam
+  Samayapuram
+  Kodungaiyur
+  Peenya
+  Avaniyapuram
+  Lawspet
+  Edappally
+
+7. Start the backend
+- In the backend terminal run:
+
+  npm run dev
+
+- Backend should run on:
+  http://localhost:4000
+
+8. Install frontend dependencies
+- Open a second terminal and run:
+
+  cd frontend
+  npm install
+
+9. Start the frontend
+- In the frontend terminal run:
+
+  npm run dev
+
+- Frontend should run on:
+  http://localhost:8080
+
+10. Open the app
+- Open browser and go to:
+  http://localhost:8080
+
+11. Login with seeded demo accounts
+- These accounts now exist in Supabase Auth and the app data is stored in Supabase PostgreSQL.
+- Admin:
+  email: admin@smartwaste.io
+  password: Password@123
+
+- Dummy Admin:
+  email: dummy.admin@routeshield.io
+  password: Admin@12345
+
+- Driver 1:
+  email: driver.one@smartwaste.io
+  password: Password@123
+
+- Driver 2:
+  email: driver.two@smartwaste.io
+  password: Password@123
+
+- Dummy Driver:
+  email: dummy.driver@routeshield.io
+  password: Driver@12345
+
+- Driver 3:
+  email: driver.three@smartwaste.io
+  password: Password@123
+
+- Driver 4:
+  email: driver.four@smartwaste.io
+  password: Password@123
+
+- Reserved hardware relay user:
+  email: hardware.relay@wastelogix.io
+  password: Hardware@12345
+  truck: TN-45-WL-9900
+  device key: HARDWARE-TN459900
+  note: this account is reserved for the live ESP32 hardware feed and is seeded in Supabase
+
+12. What each role can access
+- Admin:
+  live fleet map
+  anomaly alerts
+  driver scores
+  task assignment
+  trip replay
+  invoice generation
+
+- Driver:
+  assigned trips
+  route map
+  payment visibility
+  stop validation
+  offline sync when connection returns
+
+13. Useful backend commands
+- Build backend:
+  npm run build
+
+- Start compiled backend:
+  npm run start
+
+- Reseed data:
+  npm run prisma:seed
+
+14. Hardware GPS setup
+- Hardware files are in:
+  hardware\
+
+- Reserved hardware login:
+  email: hardware.relay@wastelogix.io
+  password: Hardware@12345
+
+- Reserved hardware truck:
+  truck number: TN-45-WL-9900
+  device key: HARDWARE-TN459900
+  live trip id: seed-trip-hardware-live-relay
+
+- Hardware backend endpoints:
+  POST http://localhost:4000/api/hardware/location
+  POST http://localhost:4000/api/hardware/status
+
+- Required hardware header:
+  x-iot-secret: iot-shared-secret
+
+- Check whether ports and hardware COM are available:
+
+  powershell -ExecutionPolicy Bypass -File .\hardware\check_ports.ps1
+
+- Current expected TCP usage:
+  backend uses port 4000
+  frontend uses port 8080
+  hardware serial bridge does not need a TCP listening port
+
+- Backend LAN setting for laptop-free hardware mode:
+  backend\.env contains HOST="0.0.0.0"
+  this allows the backend to listen on the laptop Wi-Fi/LAN interface, not only localhost
+
+- If the ESP32 is on the same Wi-Fi as the laptop:
+  start the backend first
+  run:
+
+  powershell -ExecutionPolicy Bypass -File .\hardware\standalone_check.ps1
+
+  open hardware\esp32_gps_firmware\esp32_gps_firmware.ino
+  set WIFI_SSID
+  set WIFI_PASSWORD
+  set API_BASE_URL to the LAN API URL printed by standalone_check.ps1, for example:
+  http://10.198.88.87:4000/api
+  upload the firmware from Arduino IDE or arduino-cli
+  then the ESP32 can be powered from a USB charger or power bank without staying connected to the laptop
+
+- Current laptop Wi-Fi backend URL tested on this machine:
+  http://10.198.88.87:4000/api
+
+- If ESP32 direct HTTP shows "connection refused":
+  keep using the USB serial bridge command below
+  the phone hotspot or Windows firewall may be blocking device-to-laptop TCP connections
+  the serial bridge still sends the same hardware telemetry into the backend
+  to allow standalone direct Wi-Fi mode, reopen PowerShell as Administrator and run:
+
+  powershell -ExecutionPolicy Bypass -File .\hardware\standalone_check.ps1 -OpenFirewall
+
+- Standalone firmware behavior:
+  direct Wi-Fi HTTP posting is enabled
+  USB serial bridge output is still enabled
+  SECONDARY_API_BASE_URL can be set to a deployed public backend URL for fully laptop-free operation
+  up to 16 GPS location payloads are queued on the ESP32 and retried if Wi-Fi/backend is temporarily unavailable
+  heartbeat status is sent live but not queued to avoid filling storage while there is no GPS fix
+
+- If Wi-Fi direct posting does not work, use USB serial bridge:
+  close Arduino Serial Monitor
+  find the real ESP32 COM port using check_ports.ps1
+  run:
+
+  powershell -ExecutionPolicy Bypass -File .\hardware\serial_bridge.ps1 -PortName COM4
+
+  Replace COM4 with your actual ESP32 COM port if check_ports.ps1 reports a different one.
+
+- Current tested hardware port on this laptop:
+  COM4
+  Silicon Labs CP210x USB to UART Bridge
+
+- Current live hardware status:
+  firmware upload works on COM4
+  serial bridge posts hardware-status payloads to the backend
+  GPS coordinates require a valid outdoor GPS fix before location logs are created
+
+- If the bridge shows "Waiting for valid fix. Satellites: 0":
+  move the GPS antenna near a window or outdoors
+  confirm GPS TX is connected to ESP32 GPIO16
+  confirm GPS GND and ESP32 GND are common
+  wait a few minutes for first GPS lock
+
+- If check_ports.ps1 only shows Bluetooth COM ports:
+  the ESP32 is NOT detected by Windows
+  use a real data USB cable
+  try a different USB port
+  install CP210x or CH340 USB serial driver depending on your board
+
+15. Useful frontend commands
+- Build frontend:
+  npm run build
+
+- Run tests:
+  npm test
+
+16. If database setup fails
+- Make sure backend\.env still contains the Supabase database URL and Supabase keys.
+- Make sure your internet connection can reach the Supabase project.
+- If Prisma says it cannot reach db.<project-ref>.supabase.co:5432 or returns a schema engine error:
+  switch DATABASE_URL to the Supabase Session pooler connection string from the dashboard Connect page
+  the pooler host looks like:
+  postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+- If Prisma generate shows a Windows file lock error:
+  close any backend/frontend terminals that may still be using Prisma
+  then run normal generate again:
+
+  npx prisma generate
+
+- If you only need a temporary type refresh for build/debugging, you can use:
+
+  npx prisma generate --no-engine
+
+- But before running the actual backend or seeding the database, run this again:
+
+  npx prisma generate
+
+- Then rerun:
+
+  cd backend
+  npx prisma db push
+  npm run prisma:seed
+
+17. If login fails
+- Login now authenticates against Supabase Auth first.
+- If Prisma direct database connection is temporarily unavailable, the backend has a Supabase REST fallback for login/profile sync.
+- If dashboard data still fails after login, update backend\.env DATABASE_URL to the Supabase Session pooler string and restart backend.
+
+18. If the app does not load data
+- Confirm backend is running on port 4000.
+- Confirm frontend is running on port 8080.
+- Confirm backend\.env has:
+  CLIENT_URL="http://localhost:8080"
+- Restart both terminals after changing env values.
+
+19. Recommended run order every time
+- Terminal 1:
+  cd backend
+  npm run dev
+
+- Terminal 2:
+  cd frontend
+  npm run dev
+
+- Optional Terminal 3 for hardware bridge after ESP32 COM port appears:
+  powershell -ExecutionPolicy Bypass -File .\hardware\serial_bridge.ps1 -PortName COM4
+
+- Then open:
+  http://localhost:8080
+
+20. What changed in this version
+- Landing page, login page, and signup page were restored to the original Lovable-style UI from the referenced shift-stream repo.
+- Backend auth now validates credentials against Supabase Auth.
+- Application tables and seeded logistics data now live in Supabase PostgreSQL.
+- Hardware integration was added with ESP32 firmware, USB serial bridge, live GPS endpoints, and a reserved hardware driver/truck/trip.
